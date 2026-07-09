@@ -1,0 +1,19 @@
+﻿# Importar todos los modelos para que Alembic detecte metadata completa.
+from app.modules.active_trips.models import ActiveTrip  # noqa: F401
+from app.modules.admins.models import Admin  # noqa: F401
+from app.modules.audit.models import AuditLog  # noqa: F401
+from app.modules.buses.models import Bus  # noqa: F401
+from app.modules.bus_assignments.models import BusDriverAssignment  # noqa: F401
+from app.modules.drivers.models import Driver  # noqa: F401
+from app.modules.favorites.models import FavoritePlace  # noqa: F401
+from app.modules.file_imports.models import FileImport  # noqa: F401
+from app.modules.lines.models import Linea  # noqa: F401
+from app.modules.offline_packages.models import OfflinePackage  # noqa: F401
+from app.modules.puntos_trasbordos.models import PuntoTrasbordo  # noqa: F401
+from app.modules.route_points.models import LineaPunto  # noqa: F401
+from app.modules.routes.models import LineaRuta  # noqa: F401
+from app.modules.settings.models import Setting  # noqa: F401
+from app.modules.stops.models import Punto  # noqa: F401
+from app.modules.tracking.models import TrackingLocation  # noqa: F401
+from app.modules.users.models import User  # noqa: F401
+from app.modules.user_history.models import UserRouteHistory  # noqa: F401

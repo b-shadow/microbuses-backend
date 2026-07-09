@@ -1,0 +1,92 @@
+# =========================
+# Entorno / secretos
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Paquetes / builds
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Bases locales / archivos generados
+# =========================
+*.sqlite
+*.sqlite3
+*.db
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Si tu carpeta data tiene archivos importantes, NO ignores toda la carpeta data.
+# Por eso solo ignoramos bases locales arriba.
+
+# =========================
+# Docker / temporales
+# =========================
+.docker/
+docker-data/
+tmp/
+temp/
+
+# =========================
+# Alembic
+# =========================
+# NO ignorar alembic/ ni alembic.ini porque sí deben subirse.
+# Solo ignorar caches
+alembic/__pycache__/
+
+# =========================
+# Sistema / editores
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Archivos de usuario Linux que NO deben estar en el repo
+# =========================
+.bash_history
+.bash_logout
+.bashrc
+.profile
+.sudo_as_admin_successful
+.wget-hsts
+
+# =========================
+# Tests / coverage
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
