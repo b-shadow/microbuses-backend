@@ -66,8 +66,14 @@ def map_lines(db: Session = Depends(get_db)):
                 l.nombre_linea,
                 l.color_linea,
                 lp.orden,
+                p1.id_punto AS point_id_1,
+                p1.descripcion AS point_desc_1,
+                p1.stop AS stop_1,
                 p1.latitud AS lat1,
                 p1.longitud AS lng1,
+                p2.id_punto AS point_id_2,
+                p2.descripcion AS point_desc_2,
+                p2.stop AS stop_2,
                 p2.latitud AS lat2,
                 p2.longitud AS lng2
             FROM linea_ruta lr
@@ -95,6 +101,7 @@ def map_lines(db: Session = Depends(get_db)):
                 'nombre_linea': row['nombre_linea'],
                 'color_linea': row['color_linea'],
                 'geometry_geojson': {'type': 'LineString', 'coordinates': []},
+                'stops': [],
             },
         )
         coordinates = item['geometry_geojson']['coordinates']
@@ -105,6 +112,30 @@ def map_lines(db: Session = Depends(get_db)):
         if coordinates[-1] != start_point:
             coordinates.append(start_point)
         coordinates.append(end_point)
+
+        stops = item['stops']
+        if str(row['stop_1'] or '').strip().upper() == 'S':
+            stop_key = int(row['point_id_1'])
+            if not any(existing['id_punto'] == stop_key for existing in stops):
+                stops.append(
+                    {
+                        'id_punto': stop_key,
+                        'descripcion': row['point_desc_1'],
+                        'lat': float(row['lat1']),
+                        'lng': float(row['lng1']),
+                    }
+                )
+        if str(row['stop_2'] or '').strip().upper() == 'S':
+            stop_key = int(row['point_id_2'])
+            if not any(existing['id_punto'] == stop_key for existing in stops):
+                stops.append(
+                    {
+                        'id_punto': stop_key,
+                        'descripcion': row['point_desc_2'],
+                        'lat': float(row['lat2']),
+                        'lng': float(row['lng2']),
+                    }
+                )
 
     return ok(data=list(grouped.values()))
 

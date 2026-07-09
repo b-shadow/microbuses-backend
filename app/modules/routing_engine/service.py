@@ -15,6 +15,7 @@ from app.modules.walking_network.service import WalkingNetworkService, WalkingPa
 class RoutePoint:
     lat: float
     lng: float
+    point_id: int | None = None
     stop: str | None = None
 
 
@@ -109,6 +110,49 @@ class RouteData:
                     straight_distance_m=distance,
                 )
         return best
+
+    def position_at_point_index(self, index: int) -> RoutePosition | None:
+        if not self.points:
+            return None
+        clamped_index = max(0, min(index, self.last_index))
+        point = self.points[clamped_index]
+        if clamped_index >= self.last_index:
+            if self.segment_count == 0:
+                segment_index = 0
+                offset = 0.0
+            else:
+                segment_index = self.last_index - 1
+                offset = 1.0
+        else:
+            segment_index = clamped_index
+            offset = 0.0
+        return RoutePosition(
+            segment_index=segment_index,
+            offset=offset,
+            lat=point.lat,
+            lng=point.lng,
+            straight_distance_m=0.0,
+        )
+
+    def nearest_stop_position(self, lat: float, lng: float) -> RoutePosition | None:
+        nearest = self.nearest_point_index(lat, lng, allowed_stop_only=True)
+        if nearest is None:
+            return None
+        index, distance = nearest
+        position = self.position_at_point_index(index)
+        if position is None:
+            return None
+        position.straight_distance_m = distance
+        return position
+
+    def position_for_point_id(self, point_id: int, *, stop_only: bool = False) -> RoutePosition | None:
+        for index, point in enumerate(self.points):
+            if point.point_id != point_id:
+                continue
+            if stop_only and (point.stop or '').strip().upper() != 'S':
+                continue
+            return self.position_at_point_index(index)
+        return None
 
     def partial_minutes(self, from_index: int, to_index: int) -> float:
         if to_index <= from_index:
@@ -283,9 +327,11 @@ class RoutingEngineService:
                 lp.orden,
                 COALESCE(lp.distancia, 0) AS segment_distance_m,
                 COALESCE(lp.tiempo, 0) AS segment_minutes,
+                p1.id_punto AS point_id1,
                 p1.latitud AS lat1,
                 p1.longitud AS lng1,
                 p1.stop AS stop1,
+                p2.id_punto AS point_id2,
                 p2.latitud AS lat2,
                 p2.longitud AS lng2,
                 p2.stop AS stop2
@@ -324,11 +370,13 @@ class RoutingEngineService:
             start_point = RoutePoint(
                 lat=float(row['lat1']),
                 lng=float(row['lng1']),
+                point_id=int(row['point_id1']) if row['point_id1'] is not None else None,
                 stop=str(row['stop1']) if row['stop1'] is not None else None,
             )
             end_point = RoutePoint(
                 lat=float(row['lat2']),
                 lng=float(row['lng2']),
+                point_id=int(row['point_id2']) if row['point_id2'] is not None else None,
                 stop=str(row['stop2']) if row['stop2'] is not None else None,
             )
 
@@ -424,7 +472,7 @@ class RoutingEngineService:
 
         if stop_only:
             stop_candidates: list[tuple[float, int]] = []
-            for index, point in enumerate(route.points[:-1]):
+            for index, point in enumerate(route.points):
                 if (point.stop or '').strip().upper() != 'S':
                     continue
                 distance = haversine_m(lat, lng, point.lat, point.lng)
@@ -432,17 +480,14 @@ class RoutingEngineService:
                     stop_candidates.append((distance, index))
             stop_candidates.sort(key=lambda item: item[0])
             for distance, index in stop_candidates[: self.max_candidates_per_route]:
-                point = route.points[index]
+                position = route.position_at_point_index(index)
+                if position is None:
+                    continue
+                position.straight_distance_m = distance
                 positions.append(
                     (
                         distance,
-                        RoutePosition(
-                            segment_index=index,
-                            offset=0.0,
-                            lat=point.lat,
-                            lng=point.lng,
-                            straight_distance_m=distance,
-                        ),
+                        position,
                     )
                 )
             return positions
@@ -549,6 +594,7 @@ class RoutingEngineService:
         *,
         routes: dict[int, RouteData],
         max_walk_m: float,
+        stop_only: bool = False,
     ) -> dict[int, list[DynamicTransferOption]]:
         route_ids = sorted(routes.keys())
         dynamic_by_source: dict[int, list[DynamicTransferOption]] = {}
@@ -566,14 +612,24 @@ class RoutingEngineService:
                 best_target_position: RoutePosition | None = None
                 best_straight_distance = float('inf')
 
-                sampled_points = list(enumerate(source_route.points[:-1]))[:: self.dynamic_transfer_point_stride]
+                source_points = list(enumerate(source_route.points))
+                if stop_only:
+                    source_points = [
+                        (index, point)
+                        for index, point in source_points
+                        if (point.stop or '').strip().upper() == 'S'
+                    ]
+                sampled_points = source_points[:: self.dynamic_transfer_point_stride]
                 if sampled_points:
-                    last_index = len(source_route.points[:-1]) - 1
+                    last_index = len(source_route.points) - 1
                     if sampled_points[-1][0] != last_index:
                         sampled_points.append((last_index, source_route.points[last_index]))
 
                 for point_index, source_point in sampled_points:
-                    target_position = target_route.nearest_position(source_point.lat, source_point.lng)
+                    if stop_only:
+                        target_position = target_route.nearest_stop_position(source_point.lat, source_point.lng)
+                    else:
+                        target_position = target_route.nearest_position(source_point.lat, source_point.lng)
                     if target_position is None:
                         continue
                     straight_distance = haversine_m(
@@ -585,13 +641,9 @@ class RoutingEngineService:
                     if straight_distance > max_walk_m or straight_distance >= best_straight_distance:
                         continue
                     best_straight_distance = straight_distance
-                    best_source_position = RoutePosition(
-                        segment_index=point_index,
-                        offset=0.0,
-                        lat=source_point.lat,
-                        lng=source_point.lng,
-                        straight_distance_m=0.0,
-                    )
+                    best_source_position = source_route.position_at_point_index(point_index)
+                    if best_source_position is None:
+                        continue
                     best_target_position = target_position
 
                 if best_source_position is None or best_target_position is None:
@@ -785,6 +837,7 @@ class RoutingEngineService:
         dynamic_transfers = self._build_dynamic_transfers(
             routes=routes,
             max_walk_m=max_walk,
+            stop_only=boarding_mode == 'STOPS_ONLY',
         )
 
         if not any(origin_candidates.values()) and not any(destination_candidates.values()):
@@ -829,14 +882,18 @@ class RoutingEngineService:
             }
 
         transfer_positions: dict[tuple[int, int], RoutePosition] = {}
+        stop_only = boarding_mode == 'STOPS_ONLY'
         for transfer in transfers:
             for line_id in (transfer.source_line_id, transfer.destination_line_id):
                 for route_id in routes_by_line.get(line_id, []):
                     key = (route_id, transfer.transfer_id)
                     if key not in transfer_positions:
-                        nearest_position = routes[route_id].nearest_position(transfer.lat, transfer.lng)
-                        if nearest_position is not None:
-                            transfer_positions[key] = nearest_position
+                        route = routes[route_id]
+                        position = route.position_for_point_id(transfer.point_id, stop_only=stop_only)
+                        if position is None and not stop_only:
+                            position = route.nearest_position(transfer.lat, transfer.lng)
+                        if position is not None:
+                            transfer_positions[key] = position
 
         complete_results: list[tuple[float, list[dict], tuple[int, ...]]] = []
         sequence = count()

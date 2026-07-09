@@ -1,7 +1,7 @@
 ﻿from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_actor, get_db
@@ -17,14 +17,29 @@ router = APIRouter(prefix='/user-history', tags=['user_history'])
 @router.get('')
 def list_history(actor=Depends(get_current_actor), db: Session = Depends(get_db)):
     require_roles(actor, {'USER'})
-    rows = db.scalars(select(UserRouteHistory).where(UserRouteHistory.user_id == actor.id).order_by(UserRouteHistory.created_at.desc())).all()
+    rows = db.execute(
+        select(
+            UserRouteHistory,
+            func.ST_Y(UserRouteHistory.origin).label('origin_lat'),
+            func.ST_X(UserRouteHistory.origin).label('origin_lng'),
+            func.ST_Y(UserRouteHistory.destination).label('destination_lat'),
+            func.ST_X(UserRouteHistory.destination).label('destination_lng'),
+        )
+        .where(UserRouteHistory.user_id == actor.id)
+        .order_by(UserRouteHistory.created_at.desc())
+    ).all()
     return ok(data=[{
-        'id': str(r.id),
-        'estimated_time': r.estimated_time,
-        'walking_distance_m': float(r.walking_distance_m),
-        'transfers_count': r.transfers_count,
-        'created_at': r.created_at.isoformat(),
-    } for r in rows])
+        'id': str(row.id),
+        'estimated_time': row.estimated_time,
+        'walking_distance_m': float(row.walking_distance_m),
+        'transfers_count': row.transfers_count,
+        'created_at': row.created_at.isoformat(),
+        'origin_lat': float(origin_lat) if origin_lat is not None else None,
+        'origin_lng': float(origin_lng) if origin_lng is not None else None,
+        'destination_lat': float(destination_lat) if destination_lat is not None else None,
+        'destination_lng': float(destination_lng) if destination_lng is not None else None,
+        'route_summary_json': row.route_summary_json,
+    } for row, origin_lat, origin_lng, destination_lat, destination_lng in rows])
 
 
 @router.post('')
